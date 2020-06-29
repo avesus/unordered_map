@@ -306,7 +306,7 @@ struct fht_chunk {
     // the following exist for key/val in a far more complicated format
     inline constexpr int8_t __attribute__((always_inline))
     get_tag_n(const uint32_t n) const {
-        return ((int8_t * const)this->tags_vec)[n];
+        return ((const int8_t * const)this->tags_vec)[n];
     }
 
 
@@ -785,7 +785,7 @@ struct fht_iterator_t {
 template<typename K,
          typename V,
          typename Hasher    = DEFAULT_HASH_64<K>,
-         typename Allocator = INPLACE_MMAP_ALLOC<K, V>>
+         typename Allocator = DEFAULT_MMAP_ALLOC<K, V>>
 struct fht_table {
 
 
@@ -904,7 +904,6 @@ struct fht_table {
         fht_chunk<K, V> * const new_chunks =
             this->alloc_mmap.allocate(_num_chunks);
 
-        assert(new_chunks == old_chunks + _num_chunks);
         uint32_t to_move = 0;
         uint32_t new_starts;
         uint32_t old_start_good_slots;
@@ -1397,7 +1396,7 @@ struct fht_table {
              typename _Hasher    = Hasher,
              typename _Allocator = Allocator>
     typename std::enable_if<FHT_SPECIAL_CONDITIONAL, const int8_t * const>::type
-    _find(key_pass_t key) const {
+        __attribute__((pure)) _find(key_pass_t key) const {
 
         // same deal with add
         const uint32_t                _log_incr = this->log_incr;
@@ -1445,7 +1444,7 @@ struct fht_table {
              typename _Hasher    = Hasher,
              typename _Allocator = Allocator>
     typename std::enable_if<(!FHT_SPECIAL_CONDITIONAL),
-                            const int8_t * const>::type
+                            const int8_t * const>::type __attribute__((pure))
     _find(key_pass_t key) const {
 
         // seperate version of find
@@ -1658,12 +1657,13 @@ struct fht_table {
 
     void
     clear() {
-        const uint32_t num_chunks = (1u) << this->log_incr;
-        const __m256i  INV_SETTER = _mm256_set1_epi8(INVALID_MASK);
+        const uint32_t _num_chunks =
+            ((1u) << (this->log_incr - L1_LOG_CACHE_LINE_SIZE));
+        const __m256i INV_SETTER = _mm256_set1_epi8(INVALID_MASK);
 
-        for (uint32_t i = 0; i < num_chunks; i++) {
-            ((__m256i * const)this->chunks + i)[0] = INV_SETTER;
-            ((__m256i * const)this->chunks + i)[1] = INV_SETTER;
+        for (uint32_t i = 0; i < _num_chunks; i++) {
+            ((__m256i * const)(this->chunks + i))[0] = INV_SETTER;
+            ((__m256i * const)(this->chunks + i))[1] = INV_SETTER;
         }
         this->npairs = 0;
     }
@@ -2011,7 +2011,8 @@ struct DEFAULT_MMAP_ALLOC {
     allocate(const size_t size) const {
         return (fht_chunk<K, V> * const)mymmap_alloc(
             NULL,
-            size * sizeof(fht_chunk<K, V>));
+            size * sizeof(fht_chunk<K, V>) +
+                1);  // + 1 is in a sense null term for iterator
     }
     void
     deallocate(fht_chunk<K, V> * const ptr, const size_t size) const {
