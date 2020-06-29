@@ -1,7 +1,6 @@
 #ifndef _FHT_HT_H_
 #define _FHT_HT_H_
 
-
 #include <assert.h>
 #include <stdint.h>
 #include <sys/mman.h>
@@ -47,7 +46,7 @@ const uint64_t FHT_ERASED     = 1;
 #define SRC_WRAPPER(X) (X)
 #endif
 
-#define NEW(type, dst, src) (new ((void *)(&(dst))) type(src))
+#define NEW(type, dst, src) (new ((void * const)(&(dst))) type(src))
 
 // basically its a speedup to prefetch keys for larger node types and slowdown
 // for smaller key types. Generally 8 has worked well go me but set to w.e
@@ -55,14 +54,16 @@ const uint64_t FHT_ERASED     = 1;
 template<typename K>
 static constexpr
     typename std::enable_if<(sizeof(K) > PREFETCH_BOUND), void>::type
-    __attribute__((always_inline)) prefetch(const void * const ptr) {
+    __attribute__((const)) __attribute__((always_inline))
+    prefetch(const void * const ptr) {
     __builtin_prefetch(ptr);
 }
 
 template<typename K>
 static constexpr
     typename std::enable_if<!(sizeof(K) > PREFETCH_BOUND), void>::type
-    __attribute__((always_inline)) prefetch(const void * const ptr) {}
+    __attribute__((const)) __attribute__((always_inline))
+    prefetch(const void * const ptr) {}
 
 
 // when to change pass by from actual value to reference
@@ -145,7 +146,7 @@ static const uint32_t FHT_MM_IDX_MASK = FHT_MM_IDX_MULT - 1;
 
 #define FHT_GEN_TAG(hash_val) ((hash_val)&CONTENT_MASK)
 #define FHT_GEN_START_IDX(hash_val)                                            \
-    ((hash_val) >> (8 * sizeof(hash_type_t) - 2))
+    (const uint32_t)((hash_val) >> (8 * sizeof(hash_type_t) - 2))
 //////////////////////////////////////////////////////////////////////
 
 
@@ -174,8 +175,10 @@ struct INPLACE_MMAP_ALLOC;
 
 //////////////////////////////////////////////////////////////////////
 // helpers
-inline uint64_t
-log_b2(uint64_t n) {
+
+// intentionally not specify for inline as this is far from critical path and
+// compiler knows better if its going to bloat executable
+uint64_t __attribute__((const)) log_b2(uint64_t n) {
     uint64_t s, t;
     t = (n > 0xffffffffUL) * (32);
     n >>= t;
@@ -190,8 +193,9 @@ log_b2(uint64_t n) {
     return (t | (n / 2));
 }
 
-inline uint64_t
-roundup_next_p2(uint64_t v) {
+// intentionally not specify for inline as this is far from critical path and
+// compiler knows better if its going to bloat executable
+uint64_t __attribute__((const)) roundup_next_p2(uint64_t v) {
     v--;
     v |= v >> 1;
     v |= v >> 2;
@@ -269,7 +273,7 @@ struct fht_chunk {
     typedef _node_t<K, V>  node_t;
 
     // actual content of chunk
-    __m128i tags_vec[FHT_MM_LINE];
+    const __m128i tags_vec[FHT_MM_LINE];
     node_t  nodes;
 
     inline constexpr uint32_t __attribute__((always_inline))
@@ -785,7 +789,7 @@ struct fht_iterator_t {
 template<typename K,
          typename V,
          typename Hasher    = DEFAULT_HASH_64<K>,
-         typename Allocator = DEFAULT_MMAP_ALLOC<K, V>>
+         typename Allocator = INPLACE_MMAP_ALLOC<K, V>>
 struct fht_table {
 
 
@@ -904,6 +908,7 @@ struct fht_table {
         fht_chunk<K, V> * const new_chunks =
             this->alloc_mmap.allocate(_num_chunks);
 
+
         uint32_t to_move = 0;
         uint32_t new_starts;
         uint32_t old_start_good_slots;
@@ -951,12 +956,13 @@ struct fht_table {
                 // here because need to reset to invalid
 
                 const hash_type_t raw_slot =
-                    this->hash(old_chunk->get_key_n(j_idx));
+                    this->hash(old_chunk->get_key_n((const uint32_t)j_idx));
                 const uint32_t start_idx = FHT_GEN_START_IDX(raw_slot);
 
                 if (FHT_GET_NTH_BIT(raw_slot, _new_log_incr - 1)) {
-                    const int8_t tag = old_chunk->get_tag_n(j_idx);
-                    old_chunk->set_tag_n(j_idx, INVALID_MASK);
+                    const int8_t tag =
+                        old_chunk->get_tag_n((const uint32_t)j_idx);
+                    old_chunk->set_tag_n((const uint32_t)j_idx, INVALID_MASK);
 
                     // place new node w.o duplicate check
                     for (uint32_t new_j = 0; new_j < FHT_MM_LINE; new_j++) {
@@ -974,10 +980,12 @@ struct fht_table {
 
                             NEW(K,
                                 *(new_chunk->get_key_n_ptr(true_idx)),
-                                std::move(*(old_chunk->get_key_n_ptr(j_idx))));
+                                std::move(*(old_chunk->get_key_n_ptr(
+                                    (const uint32_t)j_idx))));
                             NEW(V,
                                 *(new_chunk->get_val_n_ptr(true_idx)),
-                                std::move(*(old_chunk->get_val_n_ptr(j_idx))));
+                                std::move(*(old_chunk->get_val_n_ptr(
+                                    (const uint32_t)j_idx))));
 
 
                             new_starts += ((1u) << (8 * outer_idx));
@@ -1009,7 +1017,6 @@ struct fht_table {
 
             uint64_t to_move_idx;
             uint32_t to_place_idx;
-
             while (to_move) {
                 uint32_t j;
                 __asm__("tzcnt %1, %0" : "=r"((j)) : "rm"((to_move)));
@@ -1030,19 +1037,21 @@ struct fht_table {
                     const uint32_t true_idx =
                         FHT_MM_IDX_MULT * j + to_place_idx;
 
-                    old_chunk->set_tag_n(true_idx,
-                                         old_chunk->get_tag_n(to_move_idx));
+                    old_chunk->set_tag_n(
+                        true_idx,
+                        old_chunk->get_tag_n((const uint32_t)to_move_idx));
 
 
                     NEW(K,
                         *(old_chunk->get_key_n_ptr(true_idx)),
-                        std::move(*(old_chunk->get_key_n_ptr(to_move_idx))));
+                        std::move(*(old_chunk->get_key_n_ptr((const uint32_t)to_move_idx))));
+
                     NEW(V,
                         *(old_chunk->get_val_n_ptr(true_idx)),
-                        std::move(*(old_chunk->get_val_n_ptr(to_move_idx))));
+                        std::move(*(old_chunk->get_val_n_ptr((const uint32_t)to_move_idx))));
 
 
-                    old_chunk->set_tag_n(to_move_idx, INVALID_MASK);
+                    old_chunk->set_tag_n((const uint32_t)to_move_idx, INVALID_MASK);
 
                     old_start_good_slots += ((1u) << (8 * j));
                     old_start_pos[j] |= ((1u) << to_place_idx);
@@ -1116,6 +1125,7 @@ struct fht_table {
         // set this while its definetly still in cache
         this->chunks = new_chunks;
 
+
         // iterate through all chunks and re-place nodes
         for (uint32_t i = 0; i < _num_chunks; i++) {
             uint64_t slot_idx = 0;
@@ -1144,10 +1154,11 @@ struct fht_table {
 
 
                 const hash_type_t raw_slot =
-                    this->hash(old_chunk->get_key_n(j_idx));
+                    this->hash(old_chunk->get_key_n((const uint32_t)j_idx));
                 const uint32_t start_idx = FHT_GEN_START_IDX(raw_slot);
                 const uint32_t nth_bit =
                     FHT_GET_NTH_BIT(raw_slot, _new_log_incr - 1);
+
                 // 50 50 of hashing to same slot or slot + .5 * new table size
                 fht_chunk<K, V> * const new_chunk =
                     new_chunks + (i | (nth_bit ? _num_chunks : 0));
@@ -1163,14 +1174,17 @@ struct fht_table {
                         const uint32_t true_idx =
                             FHT_MM_IDX_MULT * outer_idx + inner_idx;
 
-                        new_chunk->set_tag_n(true_idx,
-                                             old_chunk->get_tag_n(j_idx));
+                        new_chunk->set_tag_n(
+                            true_idx,
+                            old_chunk->get_tag_n((const uint32_t)j_idx));
                         NEW(K,
                             *(new_chunk->get_key_n_ptr(true_idx)),
-                            std::move(*(old_chunk->get_key_n_ptr(j_idx))));
+                            std::move(*(old_chunk->get_key_n_ptr(
+                                (const uint32_t)j_idx))));
                         NEW(V,
                             *(new_chunk->get_val_n_ptr(true_idx)),
-                            std::move(*(old_chunk->get_val_n_ptr(j_idx))));
+                            std::move(*(old_chunk->get_val_n_ptr(
+                                (const uint32_t)j_idx))));
 
 
                         slot_idx += ((1UL) << (8 * outer_idx + 32 * nth_bit));
@@ -1195,7 +1209,6 @@ struct fht_table {
                 }
             }
         }
-
         // deallocate old table
         this->alloc_mmap.deallocate(
             (fht_chunk<K, V> * const)old_chunks,
@@ -1272,11 +1285,11 @@ struct fht_table {
     template<typename... Args>
     const int8_t *
     add(key_pass_t new_key, Args &&... args) {
-
         // get all derferncing of this out of the way
-        const uint32_t          _log_incr = this->log_incr;
-        const hash_type_t       raw_slot  = this->hash(new_key);
-        fht_chunk<K, V> * const chunk     = (fht_chunk<K, V> * const)(
+        const uint32_t    _log_incr = this->log_incr;
+        const hash_type_t raw_slot  = this->hash(new_key);
+
+        fht_chunk<K, V> * const chunk = (fht_chunk<K, V> * const)(
             (this->chunks) + (FHT_HASH_TO_IDX(raw_slot, _log_incr)));
 
         __builtin_prefetch(chunk);
@@ -1451,6 +1464,7 @@ struct fht_table {
         const uint32_t    _log_incr = this->log_incr;
         const hash_type_t raw_slot  = this->hash(key);
 
+
         // instead of doing everything through calls to just do directly. My
         // compiler at least does a bad job of optimizing out many of the
         // reference passes
@@ -1529,7 +1543,7 @@ struct fht_table {
     }
 
     inline constexpr V &
-    at(const K & key) {
+    at(const K & key) const {
         const uint64_t                res = (const uint64_t)_find(key);
         const fht_chunk<K, V> * const chunk =
             (const fht_chunk<K, V> * const)(res & (~(FHT_TAGS_PER_CLINE - 1)));
@@ -1537,18 +1551,18 @@ struct fht_table {
     }
 
     inline constexpr V &
-    at(K && key) {
+    at(K && key) const {
         const uint64_t                res = (const uint64_t)_find(key);
         const fht_chunk<K, V> * const chunk =
             (const fht_chunk<K, V> * const)(res & (~(FHT_TAGS_PER_CLINE - 1)));
         return *(chunk->get_val_ptr_n(res & (FHT_TAGS_PER_CLINE - 1)));
     }
 
-    inline constexpr V & operator[](const K & key) {
+    inline constexpr V & operator[](const K & key) const {
         return at(key);
     }
 
-    inline constexpr V & operator[](K && key) {
+    inline constexpr V & operator[](K && key) const {
         return at(key);
     }
 
@@ -1701,12 +1715,7 @@ crc_32(const uint32_t * const data, const uint32_t len) {
     }
 
     if (len & 0x3) {
-        uint32_t              final_k = 0;
-        const uint8_t * const data_8  = (const uint8_t * const)(data + l1);
-        for (uint32_t i = u32_sizeof_u32 * l1; i < len; i++) {
-            final_k <<= 8;
-            final_k |= data_8[i];
-        }
+        const uint32_t final_k = data[l1] & (((1u) << (8 * (len & 0x3))) - 1);
         res ^= __builtin_ia32_crc32si(FHT_HASH_SEED, final_k);
     }
 
@@ -1748,7 +1757,8 @@ struct HASH_32_CPP_STR {
 
     constexpr uint32_t
     operator()(K const & key) const {
-        return crc_32((const uint32_t * const)(key.c_str()), key.length());
+        return crc_32((const uint32_t * const)(key.c_str()),
+                      (const uint32_t)key.length());
     }
 };
 
@@ -1778,7 +1788,8 @@ struct DEFAULT_HASH_32 {
     constexpr typename std::enable_if<(std::is_same<_K, std::string>::value),
                                       uint32_t>::type
     operator()(K const & key) const {
-        return crc_32((const uint32_t * const)(key.c_str()), key.length());
+        return crc_32((const uint32_t * const)(key.c_str()),
+                      (const uint32_t)key.length());
     }
 
     template<typename _K = K>
@@ -1803,15 +1814,9 @@ crc_64(const uint64_t * const data, const uint32_t len) {
     }
 
     if (len & 0x7) {
-        uint64_t              final_k = 0;
-        const uint8_t * const data_8  = (const uint8_t * const)(data + l1);
-        for (uint32_t i = u32_sizeof_u32 * l1; i < len; i++) {
-            final_k <<= 8;
-            final_k |= data_8[i];
-        }
+        const uint64_t final_k = data[l1] & (((1UL) << (8 * (len & 0x7))) - 1);
         res ^= _mm_crc32_u64(FHT_HASH_SEED, final_k);
     }
-
     return res;
 }
 
@@ -1851,7 +1856,8 @@ struct HASH_64_CPP_STR {
 
     constexpr uint64_t
     operator()(K const & key) const {
-        return crc_64((const uint64_t * const)(key.c_str()), key.length());
+        return crc_64((const uint64_t * const)(key.c_str()),
+                      (const uint32_t)key.length());
     }
 };
 
@@ -1880,7 +1886,8 @@ struct DEFAULT_HASH_64 {
     constexpr typename std::enable_if<(std::is_same<_K, std::string>::value),
                                       uint64_t>::type
     operator()(K const & key) const {
-        return crc_64((const uint64_t * const)(key.c_str()), key.length());
+        return crc_64((const uint64_t * const)(key.c_str()),
+                      (const uint32_t)key.length());
     }
 
     template<typename _K = K>
