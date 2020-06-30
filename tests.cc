@@ -170,17 +170,17 @@ int
 main() {
     u32_u32_defaults_small();
     tester<uint32_t, uint32_t> t(2 * 1000 * 1000);
-    t.run_insert_perf_test();
+    t.run_correctness_test();
     tester<uint32_t, std::string> t2(2 * 1000 * 1000);
-    t2.run_insert_perf_test();
+    t2.run_correctness_test();
     tester<uint64_t, uint64_t> t3(2 * 1000 * 1000);
-    t3.run_insert_perf_test();
+    t3.run_correctness_test();
     tester<std::string, std::string> t4(2 * 1000 * 1000);
-    t4.run_insert_perf_test();
+    t4.run_correctness_test();
     tester<std::string, uint32_t> t5(2 * 1000 * 1000);
-    t5.run_insert_perf_test();
+    t5.run_correctness_test();
     tester<std::string, uint32_t> t6(2 * 1000 * 1000);
-    t6.run_insert_perf_test();
+    t6.run_correctness_test();
 }
 
 // some very explicit tests going through basic functionality
