@@ -1,4 +1,5 @@
 #include "fht_ht.hpp"
+#include "test.hpp"
 
 #include <vector>
 #include <time.h>
@@ -101,10 +102,12 @@ struct tester {
         struct timespec start, end;
         clock_gettime(CLOCK_MONOTONIC, &start);
         for (uint32_t i = 0; i < test_size; i++) {
-            volatile auto p = t.emplace(this->keys[i], this->vals[i]);
+            t[keys[i]];
         }
         clock_gettime(CLOCK_MONOTONIC, &end);
         fprintf(stderr, "Ms: %lu\n", ms_diff(end, start));
+        assert(t.size() == test_size);
+
     }
 
     void
@@ -168,19 +171,19 @@ static void u32_u32_defaults_small();
 
 int
 main() {
-    u32_u32_defaults_small();
-    tester<uint32_t, uint32_t> t(2 * 1000 * 1000);
-    t.run_correctness_test();
+    //    u32_u32_defaults_small();
+    tester<uint32_t, uint32_t> t(2 *1000* 1000);
+    t.run_insert_perf_test();
     tester<uint32_t, std::string> t2(2 * 1000 * 1000);
-    t2.run_correctness_test();
-    tester<uint64_t, uint64_t> t3(2 * 1000 * 1000);
-    t3.run_correctness_test();
+    t2.run_insert_perf_test();
+    tester<uint64_t, uint64_t> t3(100 * 1000 * 1000);
+    t3.run_insert_perf_test();
     tester<std::string, std::string> t4(2 * 1000 * 1000);
-    t4.run_correctness_test();
+    t4.run_insert_perf_test();
     tester<std::string, uint32_t> t5(2 * 1000 * 1000);
-    t5.run_correctness_test();
+    t5.run_insert_perf_test();
     tester<std::string, uint32_t> t6(2 * 1000 * 1000);
-    t6.run_correctness_test();
+    t6.run_insert_perf_test();
 }
 
 // some very explicit tests going through basic functionality
