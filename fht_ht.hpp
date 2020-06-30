@@ -1000,14 +1000,6 @@ struct fht_table {
                 }
             }
 
-            for (uint32_t j = 0; j < FHT_MM_LINE; j++) {
-                const uint32_t inner_idx = (new_starts >> (8 * j)) & 0xff;
-                for (uint32_t _j = inner_idx; _j < FHT_MM_IDX_MULT; _j++) {
-                    new_chunk->set_tag_n(j * FHT_MM_IDX_MULT + _j,
-                                         INVALID_MASK);
-                }
-            }
-
             uint64_t to_move_idx;
             uint32_t to_place_idx;
             while (to_move) {
@@ -1186,22 +1178,6 @@ struct fht_table {
                         slot_idx += ((1UL) << (8 * outer_idx + 32 * nth_bit));
                         break;
                     }
-                }
-            }
-            // set remaining to INVALID_MASK
-            for (uint32_t j = 0; j < FHT_MM_LINE; j++) {
-                const uint32_t inner_idx = (slot_idx >> (8 * j)) & 0xff;
-                for (uint32_t _j = inner_idx; _j < FHT_MM_IDX_MULT; _j++) {
-                    new_chunks[i].set_tag_n(FHT_MM_IDX_MULT * j + _j,
-                                            INVALID_MASK);
-                }
-            }
-            for (uint32_t j = 0; j < FHT_MM_LINE; j++) {
-                const uint32_t inner_idx = (slot_idx >> (8 * j + 32)) & 0xff;
-                for (uint32_t _j = inner_idx; _j < FHT_MM_IDX_MULT; _j++) {
-                    new_chunks[i | _num_chunks].set_tag_n(
-                        FHT_MM_IDX_MULT * j + _j,
-                        INVALID_MASK);
                 }
             }
         }
