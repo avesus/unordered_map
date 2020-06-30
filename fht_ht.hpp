@@ -765,8 +765,6 @@ struct fht_table {
             for (uint32_t j = 0; j < FHT_MM_LINE; j++) {
                 ((__m256i * const)(this->chunks + i))[0] = FHT_RESET_VEC;
                 ((__m256i * const)(this->chunks + i))[1] = FHT_RESET_VEC;
-                ((__m256i * const)(this->chunks + i))[2] = FHT_RESET_VEC;
-                ((__m256i * const)(this->chunks + i))[3] = FHT_RESET_VEC;
             }
             this->log_incr = _log_init_size;
             this->npairs   = 0;
@@ -811,7 +809,7 @@ struct fht_table {
 
     //////////////////////////////////////////////////////////////////////
     // rehashing
-  // rehashing
+    // rehashing
     template<typename _K         = K,
              typename _V         = V,
              typename _Hasher    = Hasher,
@@ -850,7 +848,7 @@ struct fht_table {
             fht_chunk<K, V> * const old_chunk = old_chunks + i;
             fht_chunk<K, V> * const new_chunk = new_chunks + i;
 
-                        // all intents and purposes not an important optimization but faster
+            // all intents and purposes not an important optimization but faster
             // way to reset deleted
             __m256i * const set_tags_vec =
                 (__m256i * const)(old_chunk->tags_vec);
@@ -858,7 +856,7 @@ struct fht_table {
             // turn all deleted tags -> INVALID (reset basically)
             set_tags_vec[0] = _mm256_min_epu8(set_tags_vec[0], FHT_RESET_VEC);
             set_tags_vec[1] = _mm256_min_epu8(set_tags_vec[1], FHT_RESET_VEC);
-            
+
             uint64_t j_idx,
                 iter_mask = ~(
                     (((uint64_t)_mm256_movemask_epi8(set_tags_vec[1])) << 32) |
@@ -915,12 +913,15 @@ struct fht_table {
                     // unplaceable slots
                     old_start_pos[j_idx / FHT_MM_IDX_MULT] |=
                         ((1u) << (j_idx & FHT_MM_IDX_MASK));
-                    if ((j_idx / FHT_MM_IDX_MULT) != (start_idx & FHT_MM_LINE_MASK)) {
-                        old_start_to_move[start_idx & FHT_MM_LINE_MASK] |= ((1UL) << j_idx);
+                    if ((j_idx / FHT_MM_IDX_MULT) !=
+                        (start_idx & FHT_MM_LINE_MASK)) {
+                        old_start_to_move[start_idx & FHT_MM_LINE_MASK] |=
+                            ((1UL) << j_idx);
                         to_move |= ((1u) << (start_idx & FHT_MM_LINE_MASK));
                     }
                     else {
-                        old_start_good_slots += ((1u) << (8 * (start_idx & FHT_MM_LINE_MASK)));
+                        old_start_good_slots +=
+                            ((1u) << (8 * (start_idx & FHT_MM_LINE_MASK)));
                     }
                 }
             }
@@ -1261,25 +1262,16 @@ struct fht_table {
                 const uint32_t _slot_mask = chunk->get_empty_or_del(outer_idx);
                 if (__builtin_expect(_slot_mask, 1)) {
                     __asm__("tzcnt %1, %0" : "=r"((idx)) : "rm"((_slot_mask)));
-                    const uint32_t true_idx = FHT_MM_IDX_MULT * outer_idx + idx;
+                   del_idx = FHT_MM_IDX_MULT * outer_idx + idx;
 
                     // some tunable param here would be useful
-                    if (chunk->is_deleted_n(true_idx)) {
-                        // even though this adds an operation it avoids
-                        // worst case where alot of deleted items =
-                        // unnecissary iterations. 2 iterations approx =
-                        // this cost.
-                        if (chunk->get_empty(outer_idx)) {
-                            chunk->set_key_tag(true_idx, tag, new_key);
-                            return ((const int8_t * const)chunk) + true_idx;
-                        }
-
-                        del_idx = true_idx;
+                    if (__builtin_expect((!chunk->is_deleted_n(del_idx)) ||
+                                             chunk->get_empty(outer_idx),
+                                         1)) {
+                        chunk->set_key_tag(del_idx, tag, new_key);
+                        return ((const int8_t * const)chunk) + del_idx;
                     }
-                    else {
-                        chunk->set_key_tag(true_idx, tag, new_key);
-                        return ((const int8_t * const)chunk) + true_idx;
-                    }
+     
                 }
             }
             else if (chunk->get_empty(outer_idx)) {
@@ -1601,8 +1593,6 @@ struct fht_table {
         for (uint32_t i = 0; i < _num_chunks; i++) {
             ((__m256i * const)(this->chunks + i))[0] = FHT_RESET_VEC;
             ((__m256i * const)(this->chunks + i))[1] = FHT_RESET_VEC;
-            ((__m256i * const)(this->chunks + i))[2] = FHT_RESET_VEC;
-            ((__m256i * const)(this->chunks + i))[3] = FHT_RESET_VEC;
         }
         this->npairs = 0;
     }
