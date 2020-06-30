@@ -1262,7 +1262,7 @@ struct fht_table {
                 const uint32_t _slot_mask = chunk->get_empty_or_del(outer_idx);
                 if (__builtin_expect(_slot_mask, 1)) {
                     __asm__("tzcnt %1, %0" : "=r"((idx)) : "rm"((_slot_mask)));
-                   del_idx = FHT_MM_IDX_MULT * outer_idx + idx;
+                    del_idx = FHT_MM_IDX_MULT * outer_idx + idx;
 
                     // some tunable param here would be useful
                     if (__builtin_expect((!chunk->is_deleted_n(del_idx)) ||
@@ -1271,7 +1271,6 @@ struct fht_table {
                         chunk->set_key_tag(del_idx, tag, new_key);
                         return ((const int8_t * const)chunk) + del_idx;
                     }
-     
                 }
             }
             else if (chunk->get_empty(outer_idx)) {
