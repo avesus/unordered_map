@@ -274,7 +274,7 @@ struct fht_chunk {
 
     // actual content of chunk
     const __m128i tags_vec[FHT_MM_LINE];
-    node_t  nodes;
+    node_t        nodes;
 
     inline constexpr uint32_t __attribute__((always_inline))
     get_del(const uint32_t idx) const {
@@ -296,12 +296,13 @@ struct fht_chunk {
         return FHT_IS_ERASED(((const int8_t * const)this->tags_vec)[n]);
     }
 
-    inline void __attribute__((always_inline)) delete_tag_n(const uint32_t n) {
+    inline void constexpr __attribute__((always_inline))
+    delete_tag_n(const uint32_t n) {
         FHT_SET_ERASED(((int8_t * const)this->tags_vec)[n]);
     }
 
     // this undeletes
-    inline void __attribute__((always_inline))
+    inline constexpr void __attribute__((always_inline))
     set_tag_n(const uint32_t n, const int8_t new_tag) {
         ((int8_t * const)this->tags_vec)[n] = new_tag;
     }
@@ -354,13 +355,14 @@ struct fht_chunk {
     }
 
     template<typename _K = K, typename _V = V>
-    inline typename std::enable_if<(FHT_SPECIAL_CONDITIONAL &&
-                                    sizeof(_V) <= FHT_PASS_BY_VAL_THRESH),
-                                   void>::type __attribute__((always_inline))
-    set_key_val_tag(const uint32_t n,
-                    const int8_t   tag,
-                    key_pass_t     new_key,
-                    val_pass_t     new_val) {
+    inline constexpr
+        typename std::enable_if<(FHT_SPECIAL_CONDITIONAL &&
+                                 sizeof(_V) <= FHT_PASS_BY_VAL_THRESH),
+                                void>::type __attribute__((always_inline))
+        set_key_val_tag(const uint32_t n,
+                        const int8_t   tag,
+                        key_pass_t     new_key,
+                        val_pass_t     new_val) {
 
         ((int8_t * const)this->tags_vec)[n] = tag;
         NEW(K, this->nodes.keys[n], SRC_WRAPPER(new_key));
@@ -369,39 +371,42 @@ struct fht_chunk {
 
 
     template<typename _K = K, typename _V = V, typename... Args>
-    inline typename std::enable_if<(FHT_SPECIAL_CONDITIONAL &&
-                                    sizeof(_V) > FHT_PASS_BY_VAL_THRESH),
-                                   void>::type __attribute__((always_inline))
-    set_key_val_tag(const uint32_t n,
-                    const int8_t   tag,
-                    key_pass_t     new_key,
-                    Args &&... args) {
+    inline constexpr
+        typename std::enable_if<(FHT_SPECIAL_CONDITIONAL &&
+                                 sizeof(_V) > FHT_PASS_BY_VAL_THRESH),
+                                void>::type __attribute__((always_inline))
+        set_key_val_tag(const uint32_t n,
+                        const int8_t   tag,
+                        key_pass_t     new_key,
+                        Args &&... args) {
         ((int8_t * const)this->tags_vec)[n] = tag;
         NEW(K, this->nodes.keys[n], SRC_WRAPPER(new_key));
         NEW(V, this->nodes.vals[n], std::forward<Args>(args)...);
     }
 
     template<typename _K = K, typename _V = V>
-    inline typename std::enable_if<(FHT_SPECIAL_CONDITIONAL &&
-                                    sizeof(_V) > FHT_PASS_BY_VAL_THRESH),
-                                   void>::type __attribute__((always_inline))
-    set_key_val_tag(const uint32_t n,
-                    const int8_t   tag,
-                    key_pass_t     new_key,
-                    const V &      new_val) {
+    inline constexpr
+        typename std::enable_if<(FHT_SPECIAL_CONDITIONAL &&
+                                 sizeof(_V) > FHT_PASS_BY_VAL_THRESH),
+                                void>::type __attribute__((always_inline))
+        set_key_val_tag(const uint32_t n,
+                        const int8_t   tag,
+                        key_pass_t     new_key,
+                        const V &      new_val) {
         ((int8_t * const)this->tags_vec)[n] = tag;
         NEW(K, this->nodes.keys[n], SRC_WRAPPER(new_key));
         NEW(V, this->nodes.vals[n], SRC_WRAPPER(new_val));
     }
 
     template<typename _K = K, typename _V = V>
-    inline typename std::enable_if<(FHT_SPECIAL_CONDITIONAL &&
-                                    sizeof(_V) > FHT_PASS_BY_VAL_THRESH),
-                                   void>::type __attribute__((always_inline))
-    set_key_val_tag(const uint32_t n,
-                    const int8_t   tag,
-                    key_pass_t     new_key,
-                    V &            new_val) {
+    inline constexpr
+        typename std::enable_if<(FHT_SPECIAL_CONDITIONAL &&
+                                 sizeof(_V) > FHT_PASS_BY_VAL_THRESH),
+                                void>::type __attribute__((always_inline))
+        set_key_val_tag(const uint32_t n,
+                        const int8_t   tag,
+                        key_pass_t     new_key,
+                        V &            new_val) {
         ((int8_t * const)this->tags_vec)[n] = tag;
         NEW(K, this->nodes.keys[n], SRC_WRAPPER(new_key));
         NEW(V, this->nodes.vals[n], SRC_WRAPPER(new_val));
@@ -449,39 +454,42 @@ struct fht_chunk {
 
 
     template<typename _K = K, typename _V = V>
-    inline typename std::enable_if<(((!FHT_SPECIAL_CONDITIONAL)) &&
-                                    sizeof(_V) <= FHT_PASS_BY_VAL_THRESH),
-                                   void>::type __attribute__((always_inline))
-    set_key_val_tag(const uint32_t n,
-                    const int8_t   tag,
-                    key_pass_t     new_key,
-                    val_pass_t     new_val) {
+    inline constexpr
+        typename std::enable_if<(((!FHT_SPECIAL_CONDITIONAL)) &&
+                                 sizeof(_V) <= FHT_PASS_BY_VAL_THRESH),
+                                void>::type __attribute__((always_inline))
+        set_key_val_tag(const uint32_t n,
+                        const int8_t   tag,
+                        key_pass_t     new_key,
+                        val_pass_t     new_val) {
         ((int8_t * const)this->tags_vec)[n] = tag;
         NEW(K, this->nodes.nodes[n].key, SRC_WRAPPER(new_key));
         NEW(V, this->nodes.nodes[n].val, SRC_WRAPPER(new_val));
     }
 
     template<typename _K = K, typename _V = V, typename... Args>
-    inline typename std::enable_if<(((!FHT_SPECIAL_CONDITIONAL)) &&
-                                    sizeof(_V) > FHT_PASS_BY_VAL_THRESH),
-                                   void>::type __attribute__((always_inline))
-    set_key_val_tag(const uint32_t n,
-                    const int8_t   tag,
-                    key_pass_t     new_key,
-                    Args &&... args) {
+    inline constexpr
+        typename std::enable_if<(((!FHT_SPECIAL_CONDITIONAL)) &&
+                                 sizeof(_V) > FHT_PASS_BY_VAL_THRESH),
+                                void>::type __attribute__((always_inline))
+        set_key_val_tag(const uint32_t n,
+                        const int8_t   tag,
+                        key_pass_t     new_key,
+                        Args &&... args) {
         ((int8_t * const)this->tags_vec)[n] = tag;
         NEW(K, this->nodes.nodes[n].key, SRC_WRAPPER(new_key));
         NEW(V, this->nodes.nodes[n].val, std::forward<Args>(args)...);
     }
 
     template<typename _K = K, typename _V = V>
-    inline typename std::enable_if<(((!FHT_SPECIAL_CONDITIONAL)) &&
-                                    sizeof(_V) > FHT_PASS_BY_VAL_THRESH),
-                                   void>::type __attribute__((always_inline))
-    set_key_val_tag(const uint32_t n,
-                    const int8_t   tag,
-                    key_pass_t     new_key,
-                    const V &      new_val) {
+    inline constexpr
+        typename std::enable_if<(((!FHT_SPECIAL_CONDITIONAL)) &&
+                                 sizeof(_V) > FHT_PASS_BY_VAL_THRESH),
+                                void>::type __attribute__((always_inline))
+        set_key_val_tag(const uint32_t n,
+                        const int8_t   tag,
+                        key_pass_t     new_key,
+                        const V &      new_val) {
 
         ((int8_t * const)this->tags_vec)[n] = tag;
         NEW(K, this->nodes.nodes[n].key, SRC_WRAPPER(new_key));
@@ -489,13 +497,14 @@ struct fht_chunk {
     }
 
     template<typename _K = K, typename _V = V>
-    inline typename std::enable_if<(((!FHT_SPECIAL_CONDITIONAL)) &&
-                                    sizeof(_V) > FHT_PASS_BY_VAL_THRESH),
-                                   void>::type __attribute__((always_inline))
-    set_key_val_tag(const uint32_t n,
-                    const int8_t   tag,
-                    key_pass_t     new_key,
-                    V &            new_val) {
+    inline constexpr
+        typename std::enable_if<(((!FHT_SPECIAL_CONDITIONAL)) &&
+                                 sizeof(_V) > FHT_PASS_BY_VAL_THRESH),
+                                void>::type __attribute__((always_inline))
+        set_key_val_tag(const uint32_t n,
+                        const int8_t   tag,
+                        key_pass_t     new_key,
+                        V &            new_val) {
         ((int8_t * const)this->tags_vec)[n] = tag;
         NEW(K, this->nodes.nodes[n].key, SRC_WRAPPER(new_key));
         NEW(V, this->nodes.nodes[n].val, SRC_WRAPPER(new_val));
@@ -839,11 +848,10 @@ struct fht_table {
 
         // might be faster with _m512 but this is a mile from any critical path
         // and makes less portable
-        const __m256i INV_SETTER = _mm256_set1_epi8(INVALID_MASK);
         for (uint32_t i = 0; i < (_init_size / FHT_TAGS_PER_CLINE); i++) {
             for (uint32_t j = 0; j < FHT_MM_LINE; j++) {
-                ((__m256i * const)(this->chunks + i))[0] = INV_SETTER;
-                ((__m256i * const)(this->chunks + i))[1] = INV_SETTER;
+                ((__m256i * const)(this->chunks + i))[0] = FHT_RESET_VEC;
+                ((__m256i * const)(this->chunks + i))[1] = FHT_RESET_VEC;
             }
             this->log_incr = _log_init_size;
             this->npairs   = 0;
@@ -896,6 +904,7 @@ struct fht_table {
         std::is_same<_Allocator, INPLACE_MMAP_ALLOC<_K, _V>>::value,
         void>::type
     rehash() {
+
         // incr table log
         const uint32_t          _new_log_incr = ++(this->log_incr);
         fht_chunk<K, V> * const old_chunks    = this->chunks;
@@ -903,6 +912,7 @@ struct fht_table {
 
         const uint32_t _num_chunks =
             ((1u) << (_new_log_incr - 1)) / FHT_TAGS_PER_CLINE;
+
 
         // allocate new chunk array
         fht_chunk<K, V> * const new_chunks =
@@ -924,22 +934,21 @@ struct fht_table {
             fht_chunk<K, V> * const old_chunk = old_chunks + i;
             fht_chunk<K, V> * const new_chunk = new_chunks + i;
 
-
             // all intents and purposes not an important optimization but faster
             // way to reset deleted
             __m256i * const set_tags_vec =
                 (__m256i * const)(old_chunk->tags_vec);
 
-            __m256i * const set_tags_vec_new =
-                (__m256i * const)(new_chunk->tags_vec);
+            //            __m256i * const set_tags_vec_new =
+            //                (__m256i * const)(new_chunk->tags_vec);
 
 
             // turn all deleted tags -> INVALID (reset basically)
             set_tags_vec[0] = _mm256_min_epu8(set_tags_vec[0], FHT_RESET_VEC);
             set_tags_vec[1] = _mm256_min_epu8(set_tags_vec[1], FHT_RESET_VEC);
 
-            set_tags_vec_new[0] = FHT_RESET_VEC;
-            set_tags_vec_new[1] = FHT_RESET_VEC;
+            //            set_tags_vec_new[0] = FHT_RESET_VEC;
+            //            set_tags_vec_new[1] = FHT_RESET_VEC;
 
             uint64_t j_idx,
                 iter_mask = ~(
@@ -1044,14 +1053,17 @@ struct fht_table {
 
                     NEW(K,
                         *(old_chunk->get_key_n_ptr(true_idx)),
-                        std::move(*(old_chunk->get_key_n_ptr((const uint32_t)to_move_idx))));
+                        std::move(*(old_chunk->get_key_n_ptr(
+                            (const uint32_t)to_move_idx))));
 
                     NEW(V,
                         *(old_chunk->get_val_n_ptr(true_idx)),
-                        std::move(*(old_chunk->get_val_n_ptr((const uint32_t)to_move_idx))));
+                        std::move(*(old_chunk->get_val_n_ptr(
+                            (const uint32_t)to_move_idx))));
 
 
-                    old_chunk->set_tag_n((const uint32_t)to_move_idx, INVALID_MASK);
+                    old_chunk->set_tag_n((const uint32_t)to_move_idx,
+                                         INVALID_MASK);
 
                     old_start_good_slots += ((1u) << (8 * j));
                     old_start_pos[j] |= ((1u) << to_place_idx);
@@ -1249,7 +1261,7 @@ struct fht_table {
     }
 
 
-    inline constexpr void
+    inline void
     insert(std::initializer_list<const std::pair<const K, V>> ilist) {
 
         // supposedly this is a few assembly ops faster than:
@@ -1632,7 +1644,8 @@ struct fht_table {
         const __m128i * const tags = (const __m128i * const)(
             (this->chunks + FHT_HASH_TO_IDX(raw_slot, _log_incr)));
 
-        int8_t * const tags8     = (int8_t * const)tags;  // NOLINT
+        int8_t * const tags8 = (int8_t * const)(
+            this->chunks + FHT_HASH_TO_IDX(raw_slot, _log_incr));
         const __m128i  tag_match = FHT_MM_SET(FHT_GEN_TAG(raw_slot));
         const uint32_t start_idx = FHT_GEN_START_IDX(raw_slot);
 
@@ -1673,11 +1686,10 @@ struct fht_table {
     clear() {
         const uint32_t _num_chunks =
             ((1u) << (this->log_incr - L1_LOG_CACHE_LINE_SIZE));
-        const __m256i INV_SETTER = _mm256_set1_epi8(INVALID_MASK);
-
+        
         for (uint32_t i = 0; i < _num_chunks; i++) {
-            ((__m256i * const)(this->chunks + i))[0] = INV_SETTER;
-            ((__m256i * const)(this->chunks + i))[1] = INV_SETTER;
+            ((__m256i * const)(this->chunks + i))[0] = FHT_RESET_VEC;
+            ((__m256i * const)(this->chunks + i))[1] = FHT_RESET_VEC;
         }
         this->npairs = 0;
     }
@@ -2023,7 +2035,7 @@ struct DEFAULT_MMAP_ALLOC {
     }
     void
     deallocate(fht_chunk<K, V> * const ptr, const size_t size) const {
-        myMunmap(ptr, size * sizeof(fht_chunk<K, V>));
+        myMunmap((void * const)ptr, size * sizeof(fht_chunk<K, V>));
     }
 };
 
