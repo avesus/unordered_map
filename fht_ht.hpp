@@ -301,6 +301,13 @@ struct fht_chunk {
     }
 
     inline constexpr uint32_t __attribute__((always_inline))
+    has_empty(const uint32_t idx) const {
+        const __m128i vcmp =
+            _mm_cmpeq_epi8(this->tags_vec[idx], _mm_setzero_si128());
+        return _mm_testz_si128(vcmp, vcmp);
+    }
+
+    inline constexpr uint32_t __attribute__((always_inline))
     is_deleted_n(const uint32_t n) const {
         return FHT_IS_ERASED(((const int8_t * const)this->tags_vec)[n]);
     }
@@ -1236,11 +1243,11 @@ struct fht_table {
             chunk->get_key_n_ptr((FHT_MM_IDX_MULT * start_idx))));
 
         // check for valid slot or duplicate
-        uint32_t idx, slot_mask, del_idx = FHT_TAGS_PER_CLINE;
+        uint32_t idx, del_idx = FHT_TAGS_PER_CLINE;
         for (uint32_t j = 0; j < FHT_MM_ITER_LINE; j++) {
             const uint32_t outer_idx = (j + start_idx) & FHT_MM_LINE_MASK;
 
-            slot_mask =
+            uint32_t slot_mask =
                 FHT_MM_MASK(FHT_MM_SET(tag), chunk->tags_vec[outer_idx]);
             while (slot_mask) {
                 __asm__("tzcnt %1, %0" : "=r"((idx)) : "rm"((slot_mask)));
@@ -1257,23 +1264,23 @@ struct fht_table {
             }
 
             // we always go here 1st loop (where most add calls find a slot)
-            // and if no deleted elements alwys go here as well
+            // and if no deleted elements alwys go here as well). Since
+            // optimized so delete generally sets invalid is this worth keeping?
             if (__builtin_expect(del_idx & FHT_TAGS_PER_CLINE, 1)) {
                 const uint32_t _slot_mask = chunk->get_empty_or_del(outer_idx);
                 if (__builtin_expect(_slot_mask, 1)) {
                     __asm__("tzcnt %1, %0" : "=r"((idx)) : "rm"((_slot_mask)));
                     del_idx = FHT_MM_IDX_MULT * outer_idx + idx;
 
-                    // some tunable param here would be useful
                     if (__builtin_expect((!chunk->is_deleted_n(del_idx)) ||
-                                             chunk->get_empty(outer_idx),
+                                             chunk->has_empty(outer_idx),
                                          1)) {
                         chunk->set_key_tag(del_idx, tag, new_key);
                         return ((const int8_t * const)chunk) + del_idx;
                     }
                 }
             }
-            else if (chunk->get_empty(outer_idx)) {
+            else if (chunk->has_empty(outer_idx)) {
                 chunk->set_key_tag(del_idx, tag, new_key);
                 return ((const int8_t * const)chunk) + del_idx;
             }
@@ -1319,10 +1326,9 @@ struct fht_table {
         __attribute__((pure)) _find(key_pass_t key) const {
 
         // same deal with add
-        const uint32_t                _log_incr = this->log_incr;
-        const hash_type_t             raw_slot  = this->hash(key);
+        const hash_type_t             raw_slot = this->hash(key);
         const fht_chunk<K, V> * const chunk = (const fht_chunk<K, V> * const)(
-            (this->chunks) + (FHT_HASH_TO_IDX(raw_slot, _log_incr)));
+            (this->chunks) + (FHT_HASH_TO_IDX(raw_slot, this->log_incr)));
         __builtin_prefetch(chunk);
 
         // by setting valid here we can remove delete check
@@ -1368,15 +1374,14 @@ struct fht_table {
     _find(key_pass_t key) const {
 
         // seperate version of find
-        const uint32_t    _log_incr = this->log_incr;
-        const hash_type_t raw_slot  = this->hash(key);
+        const hash_type_t raw_slot = this->hash(key);
 
 
         // instead of doing everything through calls to just do directly. My
         // compiler at least does a bad job of optimizing out many of the
         // reference passes
         const __m128i * const tags = (const __m128i * const)(
-            (this->chunks + FHT_HASH_TO_IDX(raw_slot, _log_incr)));
+            (this->chunks + FHT_HASH_TO_IDX(raw_slot, this->log_incr)));
 
         // by setting valid here we can remove delete check
         const uint32_t start_idx = FHT_GEN_START_IDX(raw_slot);
@@ -1408,10 +1413,11 @@ struct fht_table {
                 }
                 slot_mask ^= ((1u) << idx);
             }
-
-            if (__builtin_expect(FHT_MM_EMPTY(tags[outer_idx]), 1)) {
-                return NULL;
-            }
+            const __m128i vcmp =
+                _mm_cmpeq_epi8(tags[outer_idx], _mm_setzero_si128());
+            if (__builtin_expect(_mm_testz_si128(vcmp, vcmp), 1)) {
+                    return NULL;
+                }
         }
         return NULL;
     }
@@ -1478,10 +1484,9 @@ struct fht_table {
         // basically exact same as find but instead of storing the val just
         // set tag to deleted
 
-        const uint32_t          _log_incr = this->log_incr;
-        const hash_type_t       raw_slot  = this->hash(key);
-        fht_chunk<K, V> * const chunk     = (fht_chunk<K, V> * const)(
-            (this->chunks) + (FHT_HASH_TO_IDX(raw_slot, _log_incr)));
+        const hash_type_t       raw_slot = this->hash(key);
+        fht_chunk<K, V> * const chunk    = (fht_chunk<K, V> * const)(
+            (this->chunks) + (FHT_HASH_TO_IDX(raw_slot, this->log_incr)));
         __builtin_prefetch(chunk);
 
         const uint32_t start_idx = FHT_GEN_START_IDX(raw_slot);
@@ -1513,7 +1518,7 @@ struct fht_table {
                 slot_mask ^= ((1u) << idx);
             }
 
-            if (__builtin_expect(chunk->get_empty(outer_idx), 1)) {
+            if (__builtin_expect(chunk->has_empty(outer_idx), 1)) {
                 return FHT_NOT_ERASED;
             }
         }
@@ -1530,14 +1535,13 @@ struct fht_table {
     erase(key_pass_t key) {
 
         // same logic as the find function above
-        const uint32_t    _log_incr = this->log_incr;
-        const hash_type_t raw_slot  = this->hash(key);
+        const hash_type_t raw_slot = this->hash(key);
 
         const __m128i * const tags = (const __m128i * const)(
-            (this->chunks + FHT_HASH_TO_IDX(raw_slot, _log_incr)));
+            (this->chunks + FHT_HASH_TO_IDX(raw_slot, this->log_incr)));
 
         int8_t * const tags8 = (int8_t * const)(
-            this->chunks + FHT_HASH_TO_IDX(raw_slot, _log_incr));
+            this->chunks + FHT_HASH_TO_IDX(raw_slot, this->log_incr));
 
         const uint32_t start_idx = FHT_GEN_START_IDX(raw_slot);
 
@@ -1571,9 +1575,11 @@ struct fht_table {
                 slot_mask ^= ((1u) << idx);
             }
 
-            if (__builtin_expect(FHT_MM_EMPTY(tags[outer_idx]), 1)) {
-                return FHT_NOT_ERASED;
-            }
+            const __m128i vcmp =
+                _mm_cmpeq_epi8(tags[outer_idx], _mm_setzero_si128());
+            if (__builtin_expect(_mm_testz_si128(vcmp, vcmp), 1)) {
+                    return FHT_NOT_ERASED;
+                }
         }
 
         return FHT_NOT_ERASED;
