@@ -19,8 +19,8 @@
 // you everything you need
 #ifndef L1_CACHE_LINE_SIZE
 
-#define L1_CACHE_LINE_SIZE     (64UL)
-#define L1_LOG_CACHE_LINE_SIZE 6
+#define L1_CACHE_LINE_SIZE     (2 * 64UL)
+#define L1_LOG_CACHE_LINE_SIZE (6 + 1)
 
 #define LOCAL_CACHE_SIZE_DEFINE
 
@@ -118,10 +118,10 @@ static const int8_t CONTENT_MASK = ((int8_t)0x7F);
 
 #define FHT_SET_INVALID(tag) ((tag) = INVALID_MASK)
 
-#define FHT_MM_SET(X)          _mm_set1_epi8(X)
-#define FHT_MM_MASK(X, Y)      ((uint32_t)_mm_movemask_epi8(_mm_cmpeq_epi8(X, Y)))
-#define FHT_MM_EMPTY(X)        ((uint32_t)_mm_movemask_epi8(_mm_sign_epi8(X, X)))
-#define FHT_MM_EMPTY_OR_DEL(X) ((uint32_t)_mm_movemask_epi8(X))
+#define FHT_MM_SET(X)          _mm256_set1_epi8(X)
+#define FHT_MM_MASK(X, Y)      ((uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(X, Y)))
+#define FHT_MM_EMPTY(X)        ((uint32_t)_mm256_movemask_epi8(_mm256_sign_epi8(X, X)))
+#define FHT_MM_EMPTY_OR_DEL(X) ((uint32_t)_mm256_movemask_epi8(X))
 
 
 static const __m256i FHT_RESET_VEC = _mm256_set1_epi8(INVALID_MASK);
@@ -129,7 +129,7 @@ static const __m256i FHT_RESET_VEC = _mm256_set1_epi8(INVALID_MASK);
 
 // this is if I want to play around with non - cache line sized tag arrays
 #define FHT_MM_ITER_LINE FHT_MM_LINE
-static const uint32_t FHT_MM_LINE = FHT_TAGS_PER_CLINE / sizeof(__m128i);
+static const uint32_t FHT_MM_LINE = FHT_TAGS_PER_CLINE / sizeof(__m256i);
 
 static const uint32_t FHT_MM_LINE_MASK = FHT_MM_LINE - 1;
 
@@ -282,7 +282,7 @@ struct fht_chunk {
     typedef _node_t<K, V>  node_t;
 
     // actual content of chunk
-    const __m128i tags_vec[FHT_MM_LINE];
+    const __m256i tags_vec[FHT_MM_LINE];
     node_t        nodes;
 
     inline constexpr uint32_t __attribute__((always_inline))
@@ -302,9 +302,9 @@ struct fht_chunk {
 
     inline constexpr uint32_t __attribute__((always_inline))
     has_empty(const uint32_t idx) const {
-        const __m128i vcmp =
-            _mm_cmpeq_epi8(this->tags_vec[idx], _mm_setzero_si128());
-        return _mm_testz_si128(vcmp, vcmp);
+        const __m256i vcmp =
+            _mm256_cmpeq_epi8(this->tags_vec[idx], _mm256_setzero_si256());
+        return _mm256_testz_si256(vcmp, vcmp);
     }
 
     inline constexpr uint32_t __attribute__((always_inline))
@@ -721,7 +721,7 @@ struct fht_iterator_t {
 template<typename K,
          typename V,
          typename Hasher    = DEFAULT_HASH_64<K>,
-         typename Allocator = DEFAULT_MMAP_ALLOC<K, V>>
+         typename Allocator = INPLACE_MMAP_ALLOC<K, V>>
 struct fht_table {
 
 
@@ -841,10 +841,12 @@ struct fht_table {
 
 
         uint32_t to_move = 0;
+        uint32_t new_starts;
+        uint32_t old_start_good_slots;
         // iterate through all chunks and re-place nodes
         for (uint32_t i = 0; i < _num_chunks; i++) {
-            uint8_t new_slot_idx[FHT_MM_LINE]         = { 0 };
-            uint8_t old_start_good_slots[FHT_MM_LINE] = { 0 };
+            new_starts           = 0;
+            old_start_good_slots = 0;
 
             uint32_t old_start_pos[FHT_MM_LINE]     = { 0 };
             uint64_t old_start_to_move[FHT_MM_LINE] = { 0 };
@@ -889,13 +891,12 @@ struct fht_table {
                     for (uint32_t new_j = 0; new_j < FHT_MM_LINE; new_j++) {
                         const uint32_t outer_idx =
                             (new_j + start_idx) & FHT_MM_LINE_MASK;
+                        const uint32_t inner_idx =
+                            (new_starts >> (8 * outer_idx)) & 0xff;
 
-                        if (__builtin_expect(
-                                new_slot_idx[outer_idx] != FHT_MM_IDX_MULT,
-                                1)) {
+                        if (__builtin_expect(inner_idx != FHT_MM_IDX_MULT, 1)) {
                             const uint32_t true_idx =
-                                FHT_MM_IDX_MULT * outer_idx +
-                                new_slot_idx[outer_idx];
+                                FHT_MM_IDX_MULT * outer_idx + inner_idx;
 
                             ((int8_t * const)new_chunk->tags_vec)[true_idx] =
                                 tag;
@@ -909,7 +910,8 @@ struct fht_table {
                                 std::move(*(old_chunk->get_val_n_ptr(
                                     (const uint32_t)j_idx))));
 
-                            new_slot_idx[outer_idx]++;
+
+                            new_starts += ((1u) << (8 * outer_idx));
                             break;
                         }
                     }
@@ -925,14 +927,15 @@ struct fht_table {
                         to_move |= ((1u) << (start_idx & FHT_MM_LINE_MASK));
                     }
                     else {
-                        old_start_good_slots[start_idx & FHT_MM_LINE_MASK]++;
+                        old_start_good_slots +=
+                            ((1u) << (8 * (start_idx & FHT_MM_LINE_MASK)));
                     }
                 }
             }
 
             for (uint32_t j = 0; j < FHT_MM_LINE; j++) {
-                for (uint32_t _j = new_slot_idx[j]; _j < FHT_MM_IDX_MULT;
-                     _j++) {
+                const uint32_t inner_idx = (new_starts >> (8 * j)) & 0xff;
+                for (uint32_t _j = inner_idx; _j < FHT_MM_IDX_MULT; _j++) {
                     new_chunk->set_tag_n(j * FHT_MM_IDX_MULT + _j,
                                          INVALID_MASK);
                 }
@@ -978,17 +981,17 @@ struct fht_table {
                     old_chunk->set_tag_n((const uint32_t)to_move_idx,
                                          INVALID_MASK);
 
-                    old_start_good_slots[j]++;
+                    old_start_good_slots += ((1u) << (8 * j));
                     old_start_pos[j] |= ((1u) << to_place_idx);
                     old_start_pos[to_move_idx / FHT_MM_IDX_MULT] ^=
                         ((1u) << (to_move_idx & FHT_MM_IDX_MASK));
                 }
                 // j is full of items that belong but more entries wants to be
                 // in j
-                if (__builtin_expect(
-                        old_start_to_move[j] &&
-                            (old_start_good_slots[j]) == FHT_MM_IDX_MULT,
-                        0)) {
+                if (__builtin_expect(old_start_to_move[j] &&
+                                         ((old_start_good_slots >> (8 * j)) &
+                                          0xff) == FHT_MM_IDX_MULT,
+                                     0)) {
 
                     // move the indexes that this need to be placed (i.e if
                     // any of the nodes that needed to be moved to j (now
@@ -1006,9 +1009,9 @@ struct fht_table {
                         0xffff;
 
                     old_start_pos[(j + 1) & FHT_MM_LINE_MASK] |= new_mask;
-                    old_start_good_slots[(j + 1) & FHT_MM_LINE_MASK] +=
-                        bitcount_32(new_mask);
-
+                    old_start_good_slots +=
+                        bitcount_32(new_mask)
+                        << (8 * ((j + 1) & FHT_MM_LINE_MASK));
 
                     // if j + 1 was done set it back
                     if (old_start_to_move[(j + 1) & FHT_MM_LINE_MASK]) {
@@ -1377,7 +1380,7 @@ struct fht_table {
         // instead of doing everything through calls to just do directly. My
         // compiler at least does a bad job of optimizing out many of the
         // reference passes
-        const __m128i * const tags = (const __m128i * const)(
+        const __m256i * const tags = (const __m256i * const)(
             (this->chunks + FHT_HASH_TO_IDX(raw_slot, this->log_incr)));
 
         // by setting valid here we can remove delete check
@@ -1410,11 +1413,11 @@ struct fht_table {
                 }
                 slot_mask ^= ((1u) << idx);
             }
-            const __m128i vcmp =
-                _mm_cmpeq_epi8(tags[outer_idx], _mm_setzero_si128());
-            if (__builtin_expect(_mm_testz_si128(vcmp, vcmp), 1)) {
-                return NULL;
-            }
+            const __m256i vcmp =
+                _mm256_cmpeq_epi8(tags[outer_idx], _mm256_setzero_si256());
+            if (__builtin_expect(_mm256_testz_si256(vcmp, vcmp), 1)) {
+                    return NULL;
+                }
         }
         return NULL;
     }
@@ -1534,7 +1537,7 @@ struct fht_table {
         // same logic as the find function above
         const hash_type_t raw_slot = this->hash(key);
 
-        const __m128i * const tags = (const __m128i * const)(
+        const __m256i * const tags = (const __m256i * const)(
             (this->chunks + FHT_HASH_TO_IDX(raw_slot, this->log_incr)));
 
         int8_t * const tags8 = (int8_t * const)(
@@ -1572,11 +1575,11 @@ struct fht_table {
                 slot_mask ^= ((1u) << idx);
             }
 
-            const __m128i vcmp =
-                _mm_cmpeq_epi8(tags[outer_idx], _mm_setzero_si128());
-            if (__builtin_expect(_mm_testz_si128(vcmp, vcmp), 1)) {
-                return FHT_NOT_ERASED;
-            }
+            const __m256i vcmp =
+                _mm256_cmpeq_epi8(tags[outer_idx], _mm256_setzero_si256());
+            if (__builtin_expect(_mm256_testz_si256(vcmp, vcmp), 1)) {
+                    return FHT_NOT_ERASED;
+                }
         }
 
         return FHT_NOT_ERASED;
@@ -2002,4 +2005,5 @@ struct DEFAULT_ALLOC {
 
 #include "UNDEF_FHT_SPECIAL_TYPE_MACROS.h"
 //////////////////////////////////////////////////////////////////////
+
 #endif
