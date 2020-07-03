@@ -1,6 +1,11 @@
 #ifndef _FHT_HT_H_
 #define _FHT_HT_H_
 
+//TODO
+//Optimize move instructions (i.e dont use const ref for non trivially copyably types)
+//Try and remove templates
+//shrink exe size?
+
 #include <assert.h>
 #include <stdint.h>
 #include <sys/mman.h>
@@ -40,7 +45,7 @@ const uint64_t FHT_ERASED     = 1;
 // tunable
 
 // whether keys/vals passed in can be constructed with std::move
-//#define DESTROYABLE_INSERT
+#define DESTROYABLE_INSERT
 #ifdef DESTROYABLE_INSERT
 #define SRC_WRAPPER(X) std::move(X)
 #else
@@ -52,6 +57,24 @@ const uint64_t FHT_ERASED     = 1;
 // basically its a speedup to prefetch keys for larger node types and slowdown
 // for smaller key types. Generally 8 has worked well go me but set to w.e
 #define PREFETCH_BOUND 8
+
+template<typename K>
+static inline
+    typename std::enable_if<(sizeof(K) >= PREFETCH_BOUND), void>::type
+    __attribute__((const)) __attribute__((always_inline))
+    node_prefetch(const uint32_t slot_mask, const void * const ptr) {
+    uint32_t idx;
+    __asm__("lzcnt %1, %0" : "=r"((idx)) : "rm"((slot_mask)));
+    __builtin_prefetch(ptr + (31 - idx));
+}
+
+template<typename K>
+static constexpr
+    typename std::enable_if<!(sizeof(K) >= PREFETCH_BOUND), void>::type
+    __attribute__((const)) __attribute__((always_inline))
+    node_prefetch(const uint32_t slot_mask, const void * const ptr) {}
+
+
 template<typename K>
 static constexpr
     typename std::enable_if<(sizeof(K) >= PREFETCH_BOUND), void>::type
@@ -714,7 +737,7 @@ struct fht_iterator_t {
 template<typename K,
          typename V,
          typename Hasher    = DEFAULT_HASH_64<K>,
-         typename Allocator = DEFAULT_ALLOC<K, V>>
+         typename Allocator = INPLACE_MMAP_ALLOC<K, V>>
 struct fht_table {
 
 
@@ -1244,10 +1267,9 @@ struct fht_table {
                 FHT_MM_MASK(FHT_MM_SET(tag), chunk->tags_vec[outer_idx]);
 
             if (slot_mask) {
-                __asm__("lzcnt %1, %0" : "=r"((idx)) : "rm"((slot_mask)));
-                prefetch<K>((const void * const)(chunk->get_key_n_ptr(
-                    (FHT_MM_IDX_MULT * outer_idx + (31 - idx)))));
-
+                node_prefetch<K>(slot_mask,
+                                 (const void * const)(chunk->get_key_n_ptr(
+                                     (FHT_MM_IDX_MULT * outer_idx))));
 
                 while (slot_mask) {
 
@@ -1352,10 +1374,9 @@ struct fht_table {
                                     chunk->tags_vec[outer_idx]);
 
             if (slot_mask) {
-                __asm__("lzcnt %1, %0" : "=r"((idx)) : "rm"((slot_mask)));
-                prefetch<K>((const void * const)(chunk->get_key_n_ptr(
-                    (FHT_MM_IDX_MULT * outer_idx + (31 - idx)))));
-
+                node_prefetch<K>(slot_mask,
+                                 (const void * const)(chunk->get_key_n_ptr(
+                                     (FHT_MM_IDX_MULT * outer_idx))));
                 while (slot_mask) {
                     __asm__("tzcnt %1, %0" : "=r"((idx)) : "rm"((slot_mask)));
                     const uint32_t true_idx = FHT_MM_IDX_MULT * outer_idx + idx;
@@ -1416,9 +1437,9 @@ struct fht_table {
 
             // consider adding incrmenter to compiler knows its not infinite
             if (slot_mask) {
-                __asm__("lzcnt %1, %0" : "=r"((idx)) : "rm"((slot_mask)));
-                prefetch<K>((const void * const)(
-                    nodes + (FHT_MM_IDX_MULT * outer_idx + (31 - idx))));
+                node_prefetch<K>(
+                    slot_mask,
+                    (const void * const)(nodes + FHT_MM_IDX_MULT * outer_idx));
 
                 while (slot_mask) {
                     __asm__("tzcnt %1, %0" : "=r"((idx)) : "rm"((slot_mask)));
@@ -1520,9 +1541,9 @@ struct fht_table {
                                     chunk->tags_vec[outer_idx]);
 
             if (slot_mask) {
-                __asm__("lzcnt %1, %0" : "=r"((idx)) : "rm"((slot_mask)));
-                prefetch<K>((const void * const)(chunk->get_key_n_ptr(
-                    (FHT_MM_IDX_MULT * outer_idx + (31 - idx)))));
+                node_prefetch<K>(slot_mask,
+                                 (const void * const)(chunk->get_key_n_ptr(
+                                     (FHT_MM_IDX_MULT * outer_idx))));
 
                 while (slot_mask) {
                     __asm__("tzcnt %1, %0" : "=r"((idx)) : "rm"((slot_mask)));
@@ -1584,9 +1605,9 @@ struct fht_table {
                 FHT_MM_MASK(FHT_MM_SET(FHT_GEN_TAG(raw_slot)), tags[outer_idx]);
             // consider adding incrmenter to compiler knows its not infinite
             if (slot_mask) {
-                __asm__("lzcnt %1, %0" : "=r"((idx)) : "rm"((slot_mask)));
-                prefetch<K>((const void * const)(
-                    nodes + (FHT_MM_IDX_MULT * outer_idx + (31 - idx))));
+                node_prefetch<K>(
+                    slot_mask,
+                    (const void * const)(nodes + FHT_MM_IDX_MULT * outer_idx));
 
                 while (slot_mask) {
                     __asm__("tzcnt %1, %0" : "=r"((idx)) : "rm"((slot_mask)));
