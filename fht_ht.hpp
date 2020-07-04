@@ -276,6 +276,11 @@ struct fht_chunk {
     }
 
     inline constexpr uint32_t __attribute__((always_inline))
+    get_tag_matches(const int8_t tag, const uint32_t idx) {
+        return FHT_MM_MASK(FHT_MM_SET(tag), this->tags[idx]);
+    }
+
+    inline constexpr uint32_t __attribute__((always_inline))
     has_empty(const uint32_t idx) const {
         const __m128i vcmp =
             _mm_cmpeq_epi8(this->tags[idx], _mm_set1_epi8(INVALID_MASK));
@@ -485,7 +490,7 @@ struct fht_iterator_t {
 template<typename K,
          typename V,
          typename Hasher    = DEFAULT_HASH_64<K>,
-         typename Allocator = INPLACE_MMAP_ALLOC<K, V>>
+         typename Allocator = DEFAULT_ALLOC<K, V>>
 struct fht_table {
 
 
@@ -1002,7 +1007,7 @@ struct fht_table {
         for (uint32_t j = 0; j < FHT_MM_ITER_LINE; ++j) {
             const uint32_t outer_idx = (j + start_idx) & FHT_MM_LINE_MASK;
 
-            slot_mask = FHT_MM_MASK(FHT_MM_SET(tag), chunk->tags[outer_idx]);
+            slot_mask = chunk->get_tag_matches(tag, outer_idx);
 
             if (slot_mask) {
                 node_prefetch<K>(slot_mask,
@@ -1116,7 +1121,7 @@ struct fht_table {
         for (uint32_t j = 0; j < FHT_MM_ITER_LINE; ++j) {
             // seeded with start_idx we go through idx function
             const uint32_t outer_idx = (j + start_idx) & FHT_MM_LINE_MASK;
-            slot_mask = FHT_MM_MASK(FHT_MM_SET(tag), chunk->tags[outer_idx]);
+            slot_mask = chunk->get_tag_matches(tag, outer_idx);
 
             if (slot_mask) {
                 node_prefetch<K>(slot_mask,
@@ -1214,8 +1219,7 @@ struct fht_table {
         uint32_t idx, slot_mask;
         for (uint32_t j = 0; j < FHT_MM_ITER_LINE; ++j) {
             const uint32_t outer_idx = (j + start_idx) & FHT_MM_LINE_MASK;
-            slot_mask = FHT_MM_MASK(FHT_MM_SET(tag), chunk->tags[outer_idx]);
-
+            slot_mask = chunk->get_tag_matches(tag, outer_idx);
             if (slot_mask) {
                 node_prefetch<K>(slot_mask,
                                  (const int8_t * const)(chunk->get_key_n_ptr(
