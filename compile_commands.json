@@ -10,7 +10,6 @@
             "-Wabi",
             "-Wabi-tag",
             "-Waddress",
-            "-Waggregate-return",
             "-Waggressive-loop-optimizations",
             "-Walloc-zero",
             "-Walloca",
@@ -82,7 +81,6 @@
             "-Wmemset-transposed-args",
             "-Wmisleading-indentation",
             "-Wmissing-braces",
-            "-Wmissing-declarations",
             "-Wmissing-field-initializers",
             "-Wmissing-include-dirs",
             "-Wmultichar",
@@ -102,7 +100,6 @@
             "-Woverloaded-virtual",
             "-Wpacked",
             "-Wpacked-bitfield-compat",
-            "-Wpadded",
             "-Wparentheses",
             "-Wpedantic",
             "-Wpmf-conversions",
@@ -162,7 +159,6 @@
             "-Wunused-function",
             "-Wunused-label",
             "-Wunused-local-typedefs",
-            "-Wunused-parameter",
             "-Wunused-result",
             "-Wunused-value",
             "-Wunused-variable",
@@ -174,14 +170,14 @@
             "-Wvla",
             "-Wvolatile-register-var",
             "-Wwrite-strings",
-            "-Wzero-as-null-pointer-constant",
+            "-D__CLANG_SUPPORT_DYN_ANNOTATION__",
             "-flto",
             "-march=native",
             "-o",
             "tests",
             "tests.cc"
         ],
-        "directory": "/home/noah/programs/fht_map",
+        "directory": "/home/noah/programs/unordered_map",
         "file": "tests.cc"
     }
 ]

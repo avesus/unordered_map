@@ -292,7 +292,8 @@ struct fht_chunk {
 
     inline constexpr uint32_t __attribute__((always_inline))
     resize_skip_n(const uint32_t n) const {
-        return (((int8_t * const)this->tags)[n]) & INVALID_MASK;
+        return (((const uint8_t * const)this->tags)[n]) &
+               ((const uint8_t const)INVALID_MASK);
     }
 
     // this unerases
@@ -349,6 +350,7 @@ struct fht_iterator_t {
         this->cur_tag = init_tag_pos;
     }
 
+
     fht_iterator_t(const int8_t * init_tag_pos, const uint64_t end) {
         // initialization of new iterator (not from find but from begin) so that
         // it starts at a valid slot
@@ -364,6 +366,12 @@ struct fht_iterator_t {
         }
         this->cur_tag = init_tag_pos;
     }
+
+    fht_iterator_t(fht_iterator_t && other) {
+        this->cur_tag = other.cur_tag;
+    }
+    
+    ~fht_iterator_t() {}
 
     inline fht_iterator_t &
     operator=(const fht_iterator_t & other) {
@@ -807,7 +815,7 @@ struct fht_table {
 
         // iterate through all chunks and re-place nodes
         for (uint32_t i = 0; i < _num_chunks; ++i) {
-            uint8_t new_slot_idx[2][FHT_MM_LINE] = { 0 };
+            uint8_t new_slot_idx[2][FHT_MM_LINE] = { {0}, {0} };
 
             const fht_chunk<K, V> * const old_chunk = old_chunks + i;
 
@@ -968,7 +976,8 @@ struct fht_table {
     }
 
     inline constexpr V & operator[](K && key) {
-        const uint64_t res = ((const uint64_t)add(std::move(key))) & (~(((1UL) << 48)));
+        const uint64_t res =
+            ((const uint64_t)add(std::move(key))) & (~(((1UL) << 48)));
         fht_chunk<K, V> * const temp_chunk =
             (fht_chunk<K, V> * const)(res & (~(FHT_TAGS_PER_CLINE - 1)));
         return *(
@@ -1175,7 +1184,7 @@ struct fht_table {
 
     inline constexpr V &
     at(K && key) const {
-        const uint64_t                res = (const uint64_t)_find(std::move(key));
+        const uint64_t res = (const uint64_t)_find(std::move(key));
         const fht_chunk<K, V> * const chunk =
             (const fht_chunk<K, V> * const)(res & (~(FHT_TAGS_PER_CLINE - 1)));
         return *(chunk->get_val_n_ptr(res & (FHT_TAGS_PER_CLINE - 1)));
