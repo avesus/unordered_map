@@ -372,23 +372,23 @@ main() {
 
     fprintf(stderr, "Doing 10 Million <int, int>\n");
     tester<uint32_t, uint32_t> t(2 * 1000 * 1000);
-    t.run_correctness_test();
+    t.run_insert_find_perf_test();
 
     fprintf(stderr, "Doing 10 Million <int, string>\n");
     tester<uint32_t, std::string> t2(2 * 1000 * 1000);
-    t2.run_correctness_test();
+    t2.run_insert_find_perf_test();
 
     fprintf(stderr, "Doing 10 Million <int64, int64>\n");
     tester<uint64_t, uint64_t> t3(10 * 1000 * 1000);
-    t3.run_correctness_test();
+    t3.run_insert_find_perf_test();
 
     fprintf(stderr, "Doing 2 Million <string, string>\n");
     tester<std::string, std::string> t4(2 * 1000 * 1000);
-    t4.run_correctness_test();
+    t4.run_insert_find_perf_test();
 
     fprintf(stderr, "Doing 10 Million <string, int>\n");
     tester<std::string, uint32_t> t5(4 * 1000 * 1000);
-    t5.run_correctness_test();
+    t5.run_insert_find_perf_test();
 }
 
 // some very explicit tests going through basic functionality

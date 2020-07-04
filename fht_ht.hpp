@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <sys/mman.h>
+#include <iostream>
 #include <string>
 #include <type_traits>
 
@@ -278,6 +279,12 @@ struct fht_chunk {
     inline constexpr uint32_t __attribute__((always_inline))
     get_tag_matches(const int8_t tag, const uint32_t idx) {
         return FHT_MM_MASK(FHT_MM_SET(tag), this->tags[idx]);
+    }
+
+    inline constexpr uint64_t __attribute__((always_inline))
+    get_tag_matches_full(const int8_t tag) {
+        return _mm512_cmpeq_epi8_mask(_mm512_set1_epi8(tag),
+                                      *((const __m512i * const)((this->tags))));
     }
 
     inline constexpr uint32_t __attribute__((always_inline))
@@ -838,18 +845,17 @@ struct fht_table {
                 // 50 50 of hashing to same slot or slot + .5 * new table size
                 fht_chunk<K, V> * const new_chunk =
                     new_chunks + (i | (nth_bit ? _num_chunks : 0));
-
                 // place new node w.o duplicate check
                 for (uint32_t new_j = 0; new_j < FHT_MM_ITER_LINE; ++new_j) {
-                    const uint32_t outer_idx =
-                        (new_j + start_idx) & FHT_MM_LINE_MASK;
-
+                    const uint32_t outer_idx = (new_j + start_idx) & FHT_MM_LINE_MASK;
+                    
                     if (__builtin_expect(
                             new_slot_idx[nth_bit][outer_idx] != FHT_MM_IDX_MULT,
                             1)) {
                         const uint32_t true_idx =
                             FHT_MM_IDX_MULT * outer_idx +
-                            new_slot_idx[nth_bit][outer_idx];
+                            new_slot_idx[nth_bit][outer_idx]++;
+
 
                         new_chunk->set_tag_n(
                             true_idx,
@@ -863,7 +869,6 @@ struct fht_table {
                             std::move(*(old_chunk->get_val_n_ptr(
                                 (const uint32_t)j_idx))));
 
-                        new_slot_idx[nth_bit][outer_idx]++;
                         break;
                     }
                 }
@@ -879,6 +884,7 @@ struct fht_table {
             for (uint32_t j = 0; j < FHT_MM_LINE; ++j) {
                 for (uint32_t _j = new_slot_idx[1][j]; _j < FHT_MM_IDX_MULT;
                      ++_j) {
+
                     new_chunks[i | _num_chunks].set_tag_n(
                         FHT_MM_IDX_MULT * j + _j,
                         INVALID_MASK);
@@ -1003,11 +1009,11 @@ struct fht_table {
         const int8_t tag = FHT_GEN_TAG(raw_slot);
 
         // check for valid slot or duplicate
-        uint32_t idx, slot_mask, erase_idx = FHT_TAGS_PER_CLINE;
+        uint32_t       idx, slot_mask, erase_idx = FHT_TAGS_PER_CLINE;
+        const uint64_t outer_slot_mask = chunk->get_tag_matches_full(tag);
         for (uint32_t j = 0; j < FHT_MM_ITER_LINE; ++j) {
             const uint32_t outer_idx = (j + start_idx) & FHT_MM_LINE_MASK;
-
-            slot_mask = chunk->get_tag_matches(tag, outer_idx);
+            slot_mask = (outer_slot_mask >> (outer_idx * 16)) & 0xffff;
 
             if (slot_mask) {
                 node_prefetch<K>(slot_mask,
@@ -1037,6 +1043,7 @@ struct fht_table {
                     chunk->get_empty_or_erased(outer_idx);
                 if (__builtin_expect(_slot_mask, 1)) {
                     __asm__("tzcnt %1, %0" : "=r"((idx)) : "rm"((_slot_mask)));
+
                     erase_idx = FHT_MM_IDX_MULT * outer_idx + idx;
 
                     // some tunable param here would be useful
@@ -1075,12 +1082,11 @@ struct fht_table {
         fht_chunk<K, V> * const new_chunk = (fht_chunk<K, V> * const)(
             this->chunks + FHT_HASH_TO_IDX(raw_slot, this->log_incr));
 
-
         // after rehash add without duplication check
         for (uint32_t j = 0; j < FHT_MM_ITER_LINE; ++j) {
-            const uint32_t outer_idx  = (j + start_idx) & FHT_MM_LINE_MASK;
-            const uint32_t _slot_mask = new_chunk->get_empty(outer_idx);
+            const uint32_t outer_idx = (j + start_idx) & FHT_MM_LINE_MASK;
 
+            const uint32_t _slot_mask = new_chunk->get_empty(outer_idx);
             if (__builtin_expect(_slot_mask, 1)) {
                 __asm__("tzcnt %1, %0" : "=r"((idx)) : "rm"((_slot_mask)));
                 const uint32_t true_idx = FHT_MM_IDX_MULT * outer_idx + idx;
@@ -1118,17 +1124,19 @@ struct fht_table {
 
         // check for valid slot of duplicate
         uint32_t idx, slot_mask;
+
+        const uint64_t outer_slot_mask = chunk->get_tag_matches_full(tag);
         for (uint32_t j = 0; j < FHT_MM_ITER_LINE; ++j) {
-            // seeded with start_idx we go through idx function
             const uint32_t outer_idx = (j + start_idx) & FHT_MM_LINE_MASK;
-            slot_mask = chunk->get_tag_matches(tag, outer_idx);
+            slot_mask = (outer_slot_mask >> (outer_idx * 16)) & 0xffff;
 
             if (slot_mask) {
                 node_prefetch<K>(slot_mask,
                                  (const int8_t * const)(chunk->get_key_n_ptr(
                                      (FHT_MM_IDX_MULT * outer_idx))));
 
-                // consider adding incrmenter to compiler knows its not infinite
+                // consider adding incrmenter to compiler knows its not
+                // infinite
                 do {
                     __asm__("tzcnt %1, %0" : "=r"((idx)) : "rm"((slot_mask)));
                     const uint32_t true_idx = FHT_MM_IDX_MULT * outer_idx + idx;
@@ -1216,10 +1224,12 @@ struct fht_table {
         const int8_t tag = FHT_GEN_TAG(raw_slot);
 
         // check for valid slot of duplicate
-        uint32_t idx, slot_mask;
+        uint32_t       idx, slot_mask;
+        const uint64_t outer_slot_mask = chunk->get_tag_matches_full(tag);
         for (uint32_t j = 0; j < FHT_MM_ITER_LINE; ++j) {
             const uint32_t outer_idx = (j + start_idx) & FHT_MM_LINE_MASK;
-            slot_mask = chunk->get_tag_matches(tag, outer_idx);
+            slot_mask = (outer_slot_mask >> (outer_idx * 16)) & 0xffff;
+
             if (slot_mask) {
                 node_prefetch<K>(slot_mask,
                                  (const int8_t * const)(chunk->get_key_n_ptr(
