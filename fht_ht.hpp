@@ -293,7 +293,7 @@ struct fht_chunk {
     inline constexpr uint32_t __attribute__((always_inline))
     resize_skip_n(const uint32_t n) const {
         return (((const uint8_t * const)this->tags)[n]) &
-               ((const uint8_t const)INVALID_MASK);
+               ((const uint8_t)INVALID_MASK);
     }
 
     // this unerases
@@ -366,18 +366,7 @@ struct fht_iterator_t {
         }
         this->cur_tag = init_tag_pos;
     }
-
-    fht_iterator_t(fht_iterator_t && other) {
-        this->cur_tag = other.cur_tag;
-    }
     
-    ~fht_iterator_t() {}
-
-    inline fht_iterator_t &
-    operator=(const fht_iterator_t & other) {
-        this->cur_tag = other.cur_tag;
-        return *this;
-    }
 
     fht_iterator_t &
     operator++() {
