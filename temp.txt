@@ -276,13 +276,6 @@ struct fht_chunk {
     }
 
     inline constexpr uint32_t __attribute__((always_inline))
-    has_empty(const uint32_t idx) const {
-        const __m128i vcmp =
-            _mm_cmpeq_epi8(this->tags[idx], _mm_set1_epi8(INVALID_MASK));
-        return _mm_testz_si128(vcmp, vcmp);
-    }
-
-    inline constexpr uint32_t __attribute__((always_inline))
     is_erased_n(const uint32_t n) const {
         return FHT_IS_ERASED(((const int8_t * const)this->tags)[n]);
     }
@@ -485,7 +478,7 @@ struct fht_iterator_t {
 template<typename K,
          typename V,
          typename Hasher    = DEFAULT_HASH_64<K>,
-         typename Allocator = INPLACE_MMAP_ALLOC<K, V>>
+         typename Allocator = DEFAULT_ALLOC<K, V>>
 struct fht_table {
 
 
@@ -981,7 +974,7 @@ struct fht_table {
     }
 
     const int8_t *
-    add(const K & new_key) {
+    add(key_pass_t new_key) {
         // get all derferncing of this out of the way
         const hash_type_t raw_slot = this->hash(new_key);
 
@@ -1118,13 +1111,14 @@ struct fht_table {
             const uint32_t outer_idx = (j + start_idx) & FHT_MM_LINE_MASK;
             slot_mask = FHT_MM_MASK(FHT_MM_SET(tag), chunk->tags[outer_idx]);
 
+            // consider adding incrmenter to compiler knows its not infinite
             if (slot_mask) {
                 node_prefetch<K>(slot_mask,
                                  (const int8_t * const)(chunk->get_key_n_ptr(
                                      (FHT_MM_IDX_MULT * outer_idx))));
 
-                // consider adding incrmenter to compiler knows its not infinite
                 do {
+
                     __asm__("tzcnt %1, %0" : "=r"((idx)) : "rm"((slot_mask)));
                     const uint32_t true_idx = FHT_MM_IDX_MULT * outer_idx + idx;
 
@@ -1134,9 +1128,9 @@ struct fht_table {
                     }
                     slot_mask ^= ((1u) << idx);
                 } while (slot_mask);
-            }
-            if (__builtin_expect(chunk->get_empty(outer_idx), 1)) {
-                return NULL;
+                if (__builtin_expect(chunk->get_empty(outer_idx), 1)) {
+                    return NULL;
+                }
             }
         }
         return NULL;
@@ -1151,7 +1145,7 @@ struct fht_table {
 
     inline constexpr fht_iterator
     find(const K & key) const {
-        const int8_t * const res = _find(std::move(key));
+        const int8_t * const res = _find(key);
         return (res == NULL) ? this->end() : fht_iterator(res);
     }
 
@@ -1216,13 +1210,12 @@ struct fht_table {
             const uint32_t outer_idx = (j + start_idx) & FHT_MM_LINE_MASK;
             slot_mask = FHT_MM_MASK(FHT_MM_SET(tag), chunk->tags[outer_idx]);
 
+            // consider adding incrmenter to compiler knows its not infinite
             if (slot_mask) {
                 node_prefetch<K>(slot_mask,
                                  (const int8_t * const)(chunk->get_key_n_ptr(
                                      (FHT_MM_IDX_MULT * outer_idx))));
-
                 do {
-
                     __asm__("tzcnt %1, %0" : "=r"((idx)) : "rm"((slot_mask)));
                     const uint32_t true_idx = FHT_MM_IDX_MULT * outer_idx + idx;
                     if (__builtin_expect((chunk->compare_key_n(true_idx, key)),

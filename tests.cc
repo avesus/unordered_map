@@ -110,7 +110,7 @@ struct tester {
     }
 
     void
-    run_insert_query_perf_test() {
+    run_insert_find_perf_test() {
         fht_table<K, V> t;
         struct timespec start, end;
         clock_gettime(CLOCK_MONOTONIC, &start);
@@ -128,7 +128,23 @@ struct tester {
     }
 
     void
-    run_insert_query_del_test() {}
+    run_insert_del_perf_test() {
+    fht_table<K, V> t;
+        struct timespec start, end;
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        for (uint32_t i = 0; i < test_size; i++) {
+            t[keys[i]];
+        }
+        for (uint32_t i = 0; i < test_size; i++) {
+            t.erase(keys[i]);
+        }
+        for (uint32_t i = 0; i < test_size; i++) {
+            t[keys[i]];
+        }
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        fprintf(stderr, "Ms: %lu\n", ms_diff(end, start));
+        assert(t.size() == test_size);
+    }
 
 
     void
@@ -352,7 +368,7 @@ int
 main() {
 
     fprintf(stderr, "Doing Small Test\n");
-    u32_u32_defaults_small();
+    //    u32_u32_defaults_small();
 
     fprintf(stderr, "Doing 10 Million <int, int>\n");
     tester<uint32_t, uint32_t> t(2 * 1000 * 1000);
