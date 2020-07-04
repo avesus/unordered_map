@@ -1,8 +1,8 @@
 #include "fht_ht.hpp"
-//#include "test.hpp"
 
 #include <time.h>
 #include <vector>
+#include <iostream>
 
 
 #define unit_change (1000)
@@ -102,8 +102,7 @@ struct tester {
         struct timespec start, end;
         clock_gettime(CLOCK_MONOTONIC, &start);
         for (uint32_t i = 0; i < test_size; i++) {
-            auto          res  = t.emplace(keys[i], vals[i]);
-            volatile auto sink = (res.first)->second;
+            t[keys[i]];
         }
         clock_gettime(CLOCK_MONOTONIC, &end);
         fprintf(stderr, "Ms: %lu\n", ms_diff(end, start));
@@ -117,8 +116,10 @@ struct tester {
         clock_gettime(CLOCK_MONOTONIC, &start);
         for (uint32_t i = 0; i < test_size; i++) {
             t[keys[i]];
-            for (uint32_t _i = i / 2; _i < (i / 2) + 10; _i++) {
-                auto sink = t.find(keys[_i]);
+            if (i < (test_size - 10)) {
+                for (uint32_t _i = i; _i < (i + 10); _i++) {
+                    auto sink = t.find(keys[_i]);
+                }
             }
         }
         clock_gettime(CLOCK_MONOTONIC, &end);
@@ -176,6 +177,98 @@ struct tester {
             }
         }
     }
+
+    void
+    unique_corr_test_insert() {
+        fht_table<K, V> t;
+        for (uint32_t _i = 0; _i < 2; _i++) {
+            for (uint32_t i = 0; i < test_size; i++) {
+                auto p = t.insert(this->keys[i], this->vals[i]);
+                assert(p.second);
+                auto it = t.find(this->keys[i]);
+                assert(it != t.end());
+                assert(it->second == this->vals[i]);
+            }
+
+            for (uint32_t i = 0; i < test_size; i++) {
+                auto it = t.find(this->keys[i]);
+                assert(it != t.end());
+                assert(it->second == this->vals[i]);
+            }
+            assert(t.size() == test_size);
+
+            uint32_t count = 0;
+            for (auto it = t.begin(); it < t.end(); ++it) {
+                count++;
+            }
+            assert(count == t.size());
+
+            for (uint32_t i = 0; i < test_size; i++) {
+                auto p = t.insert(this->keys[i], this->vals[i]);
+                assert(!p.second);
+            }
+            assert(t.size() == test_size);
+
+            for (uint32_t i = 0; i < test_size; i++) {
+                auto it = t.find(this->keys[i]);
+                assert(it != t.end());
+                assert(it->second == this->vals[i]);
+            }
+            for (uint32_t i = 0; i < test_size; i++) {
+                assert(t.erase(this->keys[i]));
+            }
+            assert(t.size() == 0);
+            for (uint32_t i = 0; i < test_size; i++) {
+                auto it = t.find(this->keys[i]);
+                assert(it == t.end());
+            }
+        }
+    }
+
+    void
+    unique_corr_test_operator() {
+        fht_table<K, V> t;
+        for (uint32_t _i = 0; _i < 2; _i++) {
+            for (uint32_t i = 0; i < test_size; i++) {
+                t[this->keys[i]] = this->vals[i];
+                assert(t[keys[i]] == this->vals[i]);
+            }
+
+            for (uint32_t i = 0; i < test_size; i++) {
+                auto it = t.find(this->keys[i]);
+                assert(it != t.end());
+                assert(it->second == this->vals[i]);
+            }
+            assert(t.size() == test_size);
+
+            uint32_t count = 0;
+            for (auto it = t.begin(); it < t.end(); ++it) {
+                count++;
+            }
+            assert(count == t.size());
+
+            for (uint32_t i = 0; i < test_size; i++) {
+                auto p = t.insert_or_assign(this->keys[i], this->vals[i]);
+                assert(!p.second);
+            }
+            assert(t.size() == test_size);
+
+            for (uint32_t i = 0; i < test_size; i++) {
+                auto it = t.find(this->keys[i]);
+                assert(it != t.end());
+                assert(it->second == this->vals[i]);
+            }
+            for (uint32_t i = 0; i < test_size; i++) {
+                assert(t.erase(this->keys[i]));
+            }
+            assert(t.size() == 0);
+            for (uint32_t i = 0; i < test_size; i++) {
+                auto it = t.find(this->keys[i]);
+                assert(it == t.end());
+            }
+        }
+    }
+
     void
     duplicate_corr_test() {
         fht_table<K, V> t;
@@ -183,6 +276,10 @@ struct tester {
             for (uint32_t i = 0; i < test_size; i++) {
                 auto p = t.emplace(this->keys[i], this->vals[i]);
                 assert(p.second);
+                auto _it = t.find(this->keys[i]);
+                assert(_it != t.end());
+                assert(_it->second == this->vals[i]);
+
                 for (uint32_t j = 0; j < 10; j++) {
                     const uint32_t tidx = rand() % (i + (i == 0));
                     auto jp = t.emplace(this->keys[tidx], this->vals[i]);
@@ -191,6 +288,7 @@ struct tester {
                     assert(it != t.end());
                     assert(it->second == this->vals[tidx]);
                 }
+
                 for (uint32_t j = 0; i < (test_size - 11) && j < 10; j++) {
                     auto jp = t.erase(this->keys[i + j + 1]);
                     assert(jp == FHT_NOT_ERASED);
@@ -226,7 +324,7 @@ struct tester {
                     }
                 }
             }
-            
+
             assert(t.size() == last_i);
             count = 0;
             for (auto it = t.begin(); it < t.end(); ++it) {
@@ -239,6 +337,8 @@ struct tester {
 
     void
     run_correctness_test() {
+        this->unique_corr_test_operator();
+        this->unique_corr_test_insert();
         this->duplicate_corr_test();
         this->unique_corr_test();
 
@@ -250,15 +350,16 @@ static void u32_u32_defaults_small();
 
 int
 main() {
+
     fprintf(stderr, "Doing Small Test\n");
     u32_u32_defaults_small();
 
-        fprintf(stderr, "Doing 10 Million <int, int>\n");
-    tester<uint32_t, uint32_t> t(10 * 1000 * 1000);
+    fprintf(stderr, "Doing 10 Million <int, int>\n");
+    tester<uint32_t, uint32_t> t(2 * 1000 * 1000);
     t.run_correctness_test();
 
     fprintf(stderr, "Doing 10 Million <int, string>\n");
-    tester<uint32_t, std::string> t2(10 * 1000 * 1000);
+    tester<uint32_t, std::string> t2(2 * 1000 * 1000);
     t2.run_correctness_test();
 
     fprintf(stderr, "Doing 10 Million <int64, int64>\n");
@@ -270,7 +371,7 @@ main() {
     t4.run_correctness_test();
 
     fprintf(stderr, "Doing 10 Million <string, int>\n");
-    tester<std::string, uint32_t> t5(9 * 1000 * 1000);
+    tester<std::string, uint32_t> t5(4 * 1000 * 1000);
     t5.run_correctness_test();
 }
 
